@@ -5,28 +5,33 @@ body { font-family: system-ui, sans-serif; }
 #ui > * { pointer-events: auto; }
 body.hide-ui #ui, body.hide-ui .tool:not(#toggleUi) { opacity: 0; pointer-events: none; }
 
-#panel { display: flex; align-items: center; gap: 22px; flex: 0 1 700px; min-height: 100px; padding: 16px 20px;
-  background: rgba(16,18,40,.92); border: 1px solid rgba(255,255,255,.08); border-radius: 26px;
+#panel { display: flex; align-items: center; gap: 16px; flex: 0 1 470px; min-height: 80px; padding: 12px 16px;
+  background: rgba(16,18,40,.92); border: 1px solid rgba(255,255,255,.08); border-radius: 20px;
   box-shadow: 0 8px 30px rgba(0,0,0,.5); }
-#dice { flex: none; width: 76px; height: 76px; display: grid; place-items: center; cursor: pointer;
-  color: #c9ffb0; background: rgba(255,255,255,.04); border: 1px solid rgba(201,255,176,.35); border-radius: 20px;
+#dice { flex: none; width: 60px; height: 60px; display: grid; place-items: center; cursor: pointer;
+  color: #c9ffb0; background: rgba(255,255,255,.04); border: 1px solid rgba(201,255,176,.35); border-radius: 16px;
   transition: transform .2s, background .2s; }
 #dice:hover:not(:disabled) { background: rgba(201,255,176,.12); transform: rotate(12deg); }
 #dice:disabled { opacity: .5; cursor: wait; animation: roll 1s linear infinite; }
-#dice:focus-visible, #back:focus-visible, .tool:focus-visible, select:focus-visible { outline: 2px solid #c9ffb0; outline-offset: 2px; }
+#dice:focus-visible, #back:focus-visible, #skip:focus-visible, .tool:focus-visible, select:focus-visible { outline: 2px solid #c9ffb0; outline-offset: 2px; }
 @keyframes roll { to { transform: rotate(360deg); } }
 
-#back { flex: none; margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 12px 16px; cursor: pointer;
-  color: #fff; font: 600 14px system-ui, sans-serif; background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.15); border-radius: 14px; }
-#back:hover:not(:disabled) { background: rgba(255,255,255,.14); }
-#back:disabled { opacity: .35; cursor: default; }
+#actions { flex: none; margin-left: auto; display: flex; flex-direction: column; gap: 6px; }
+#back, #skip { flex: none; display: flex; align-items: center; gap: 5px; padding: 8px 12px; cursor: pointer;
+  color: #fff; font: 600 12px system-ui, sans-serif; background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.15); border-radius: 11px; }
+#back svg, #skip svg { width: 14px; height: 14px; }
+#back:hover:not(:disabled), #skip:hover:not(:disabled) { background: rgba(255,255,255,.14); }
+#back:disabled, #skip:disabled { opacity: .35; cursor: default; }
 #text { min-width: 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-#name { color: #c9ffb0; font-size: clamp(22px, 4vw, 34px); font-weight: 700; letter-spacing: .06em;
+#name { color: #c9ffb0; font-size: clamp(18px, 3.2vw, 27px); font-weight: 700; letter-spacing: .06em;
   text-shadow: 0 0 12px rgba(160,255,140,.45); overflow-wrap: anywhere; }
-#sub { margin-top: 6px; color: rgba(255,255,255,.55); font-size: 14px; }
+#sub { margin-top: 4px; color: rgba(255,255,255,.55); font-size: 12px; }
 
 #filters { display: flex; gap: 12px; }
+[hidden] { display: none !important; }
+select { max-width: 260px; }
+select:disabled { opacity: .5; cursor: default; }
 select { padding: 14px 16px; color: #fff; font: 600 14px system-ui, sans-serif; cursor: pointer;
   background: rgba(16,18,40,.92); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; }
 

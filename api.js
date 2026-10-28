@@ -1,3 +1,7 @@
+// Реестр режимов отдельных стран. Каждый режим — отдельный файл в папке modes/ (см. modes/russia.js).
+const MODES = {};
+
+// Источники данных (все открытые, с поддержкой CORS):
 //  - jsDelivr (mledoze/countries): список стран
 //  - Overpass (несколько зеркал параллельно): регионы и города
 //  - Nominatim (OpenStreetMap): контуры границ
@@ -8,6 +12,7 @@ const MIRRORS = [
 ];
 const NOM = "https://nominatim.openstreetmap.org";
 
+// Запрос к Overpass: берём ответ первого зеркала, которое справилось. null = все недоступны.
 async function ovp(query) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
@@ -33,6 +38,7 @@ async function nominatim(url) {
   } catch (e) { console.warn("Nominatim:", e); return []; }
 }
 
+// Круг вокруг точки (запасной вариант, если у города нет контура)
 function circle([lng, lat], km = 2.5) {
   const pts = [];
   for (let i = 0; i <= 48; i++) {
@@ -42,6 +48,7 @@ function circle([lng, lat], km = 2.5) {
   return { type: "Polygon", coordinates: [pts] };
 }
 
+// Запрос к Wikidata SPARQL (поддерживает CORS). null = ошибка сети.
 async function sparql(q) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
@@ -66,11 +73,13 @@ function fromBindings(rows, key) {
   return out;
 }
 
+// ---- Геометрия
 const polys = g => g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
 const ringBox = ring => ring.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)],
   [Infinity, Infinity, -Infinity, -Infinity]);
 const allBox = g => polys(g).map(p => ringBox(p[0])).reduce((a, b) =>
   [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]);
+// рамка самой крупной части (чтобы заморские территории не отодвигали камеру)
 const mainBox = g => polys(g).map(p => ringBox(p[0])).sort((a, b) => (b[2] - b[0]) * (b[3] - b[1]) - (a[2] - a[0]) * (a[3] - a[1]))[0];
 function inRing([x, y], ring) {
   let c = false;
@@ -81,6 +90,28 @@ function inRing([x, y], ring) {
   return c;
 }
 const inGeom = (pt, g) => polys(g).some(p => inRing(pt, p[0]) && !p.slice(1).some(h => inRing(pt, h)));
+
+// Контур многоугольника в виде линий. Отрезки, «перепрыгивающие» через линию перемены дат
+// (из-за них на глобусе рисуются лишние параллели) и идущие вдоль неё, отбрасываются.
+function outline(g) {
+  if (!g || !/Polygon/.test(g.type)) return g;
+  const lines = [];
+  for (const p of polys(g)) for (const ring of p) {
+    let cur = [];
+    ring.forEach((pt, i) => {
+      if (i > 0) {
+        const q = ring[i - 1];
+        if (Math.abs(pt[0] - q[0]) > 180 || (Math.abs(pt[0]) >= 179.999 && Math.abs(q[0]) >= 179.999)) {
+          if (cur.length > 1) lines.push(cur);
+          cur = [];
+        }
+      }
+      cur.push(pt);
+    });
+    if (cur.length > 1) lines.push(cur);
+  }
+  return { type: "MultiLineString", coordinates: lines };
+}
 
 const API = {
   _countries: null,
@@ -102,6 +133,7 @@ const API = {
       .map(c => ({
         cca2: c.cca2,
         cca3: c.cca3,
+        ccn3: c.ccn3,
         name: (c.translations.rus && c.translations.rus.common) || c.name.common,
         center: [c.latlng[1], c.latlng[0]],
         zoom: Math.min(9, Math.max(1.8, 13.1 - 0.648 * Math.log(c.area || 1000))),
@@ -111,6 +143,7 @@ const API = {
     return this._countries;
   },
 
+  // Регионы страны: {list, failed}. Сначала Wikidata, затем Overpass.
   async _regionsWD(cc) {
     if (this._cache["r" + cc]) return this._cache["r" + cc];
     const rows = await sparql(`SELECT ?r ?rLabel ?coord ?osm WHERE { ?c wdt:P297 "${cc}". ` +
@@ -129,6 +162,7 @@ const API = {
     return (this._cache["r" + cc] = { list, failed: false });
   },
 
+  // Города региона: самые крупные по населению
   async _citiesWD(region) {
     const key = "c" + (region.qid || region.osm);
     if (this._cache[key]) return this._cache[key];
@@ -148,6 +182,7 @@ const API = {
     return (this._cache[key] = { list, failed: false });
   },
 
+  // ---- Сухопутные границы: geoBoundaries (без морских зон). ADM0 — страна, ADM1 — регионы.
   async _gb(iso3, lvl) {
     const key = "gb" + iso3 + lvl;
     if (key in this._cache) return this._cache[key];
@@ -163,6 +198,7 @@ const API = {
     return (this._cache[key] = fc);
   },
 
+  // Города мира (Natural Earth, с населением)
   async _places() {
     if (this._cache.places) return this._cache.places;
     try {
@@ -183,7 +219,7 @@ const API = {
       });
       if (list.length > 1) { console.info("Регионы: geoBoundaries,", list.length); return { list, failed: false }; }
     }
-    return this._regionsWD(country.cca2);
+    return this._regionsWD(country.cca2);   // запасной вариант: Wikidata / Overpass
   },
 
   async cities(region) {
@@ -193,7 +229,7 @@ const API = {
     const [x0, y0, x1, y1] = region.box;
     let list = pl.filter(p => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1 && inGeom([p.x, p.y], region.geometry))
       .sort((a, b) => b.pop - a.pop);
-    if (!list.length) {
+    if (!list.length) {   // в регионе нет известных городов — берём ближайший
       const [cx, cy] = region.center;
       const n = pl.map(p => ({ p, d: (p.x - cx) ** 2 + (p.y - cy) ** 2 })).sort((a, b) => a.d - b.d)[0];
       if (n && n.d < 4) list = [n.p];
@@ -202,7 +238,72 @@ const API = {
     return { list: list.map(p => ({ name: p.name, center: [p.x, p.y] })), failed: false };
   },
 
+  // ---- Режимы стран: регионы — geoBoundaries (ADM1), города — из mode.towns() (список с названиями и регионами)
+  async regionsMode(mode) {
+    const key = "mode" + mode.cca2;
+    if (this._cache[key]) return this._cache[key];
+    const [fc, towns] = await Promise.all([this._gb(mode.cca3, "ADM1"),
+      mode.towns().catch(e => { console.warn("Города режима:", e); return null; })]);
+    this._cache["towns" + mode.cca2] = towns || [];
+    if (!fc) return { list: [], failed: true };
+    const feats = fc.features.filter(f => f.geometry && f.properties.shapeName).map(f => {
+      const bbox = mainBox(f.geometry), box = allBox(f.geometry);
+      const inside = (towns || []).filter(t => t.x >= box[0] && t.x <= box[2] && t.y >= box[1] && t.y <= box[3] &&
+        inGeom([t.x, t.y], f.geometry));
+      return { f, bbox, box, inside };
+    });
+    // Контуры упрощены, поэтому прибрежные города (например, на Сахалине) могут оказаться чуть за линией:
+    // отдаём такой город ближайшему региону (в пределах ~0,7°)
+    const taken = new Set(feats.flatMap(r => r.inside));
+    for (const t of (towns || [])) {
+      if (taken.has(t)) continue;
+      let best = null, bd = 0.49;
+      for (const r of feats) {
+        if (t.x < r.box[0] - 0.7 || t.x > r.box[2] + 0.7 || t.y < r.box[1] - 0.7 || t.y > r.box[3] + 0.7) continue;
+        for (const p of polys(r.f.geometry)) for (const [x, y] of p[0]) {
+          const d = (x - t.x) ** 2 + (y - t.y) ** 2;
+          if (d < bd) { bd = d; best = r; }
+        }
+      }
+      if (best) best.inside.push(t);
+    }
+    const list = feats.map(({ f, bbox, box, inside }) => {
+      const count = {};
+      inside.forEach(t => count[t.region] = (count[t.region] || 0) + 1);
+      const top = Object.keys(count).sort((a, b) => count[b] - count[a])[0];   // русское название — по городам внутри
+      return { name: top || f.properties.shapeName, geometry: f.geometry, box, bbox, towns: inside,
+        center: [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2] };
+    });
+    console.info("Регионы (" + mode.cca2 + "):", list.length, "городов:", (towns || []).length);
+    return (this._cache[key] = { list, failed: false });
+  },
+
+  async citiesMode(region, mode) {
+    let list = region.towns || [];
+    if (!list.length) {   // в регионе нет городов из базы — ближайший
+      const all = this._cache["towns" + mode.cca2] || [], [cx, cy] = region.center;
+      const n = all.map(t => ({ t, d: (t.x - cx) ** 2 + (t.y - cy) ** 2 })).sort((a, b) => a.d - b.d)[0];
+      if (n && n.d < 25) list = [n.t];
+    }
+    return { list: list.map(t => ({ name: t.name, center: [t.x, t.y] })), failed: false };
+  },
+
+  // ---- Границы (GeoJSON-геометрия или null)
+  // Подробные сухопутные контуры стран (Natural Earth 1:10m, пакет world-atlas)
+  async _world() {
+    if ("world" in this._cache) return this._cache.world;
+    try {
+      const r = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-10m.json");
+      if (!r.ok) throw new Error("http " + r.status);
+      const t = await r.json();
+      return (this._cache.world = topojson.feature(t, t.objects.countries).features);
+    } catch (e) { console.warn("world-atlas:", e); return (this._cache.world = null); }
+  },
+
   async countryBorder(c) {
+    const w = await this._world();
+    const wf = w && c.ccn3 && w.find(x => String(x.id).padStart(3, "0") === c.ccn3);
+    if (wf && wf.geometry) return wf.geometry;
     const gb = await this._gb(c.cca3, "ADM0");
     if (gb && gb.features.length)
       return { type: "MultiPolygon", coordinates: gb.features.flatMap(f => polys(f.geometry)) };
