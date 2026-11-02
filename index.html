@@ -41,17 +41,23 @@
     </div>
   </div>
   <div id="filters">
-    <select id="fUn" aria-label="Фильтр стран">
+    <div id="checks">
+      <label id="fCity" class="chk"><input type="checkbox" id="noCityStates"> Исключить города-государства</label>
+      <label id="fMicro" class="chk"><input type="checkbox" id="noMicro"> Исключить микрогосударства</label>
+    </div>
+    <div id="selects">
+    <select id="fUn" aria-label="Режим">
       <option value="un">🇺🇳 Страны ООН</option>
     </select>
     <select id="fSubject" hidden aria-label="Регион России">
       <option value="">Случайный регион</option>
     </select>
-    <select id="fRegion" aria-label="Фильтр по части света">
-      <option value="">Весь мир</option>
-      <option>Europe</option><option>Asia</option><option>Africa</option>
-      <option>Americas</option><option>Oceania</option>
+    <select id="fRegion" aria-label="Фильтры">
+      <option value="">Фильтры</option>
+      <option value="Europe">Европа</option><option value="Asia">Азия</option><option value="Africa">Африка</option>
+      <option value="Americas">Америка</option><option value="Oceania">Океания</option>
     </select>
+    </div>
   </div>
 </div>
 
@@ -61,6 +67,7 @@
 <script src="modes/russia.js"></script>
 <script src="modes/belarus.js"></script>
 <script src="modes/kazakhstan.js"></script>
+<script src="modes/ukraine.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// Реестр режимов отдельных стран. Каждый режим — отдельный файл в папке modes/ (см. modes/russia.js).
+// Реестр режимов отдельных стран. Каждый режим — отдельный файл в папке modes/ рядом с index.html (см. modes/russia.js).
 const MODES = {};
 
 // Источники данных (все открытые, с поддержкой CORS):
@@ -138,6 +138,7 @@ const API = {
         center: [c.latlng[1], c.latlng[0]],
         zoom: Math.min(9, Math.max(1.8, 13.1 - 0.648 * Math.log(c.area || 1000))),
         un: !!c.unMember,
+        area: c.area || 0,
         continent: c.region
       }));
     return this._countries;

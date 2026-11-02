@@ -10,9 +10,12 @@ body.hide-ui #ui, body.hide-ui .tool:not(#toggleUi) { opacity: 0; pointer-events
   box-shadow: 0 8px 30px rgba(0,0,0,.5); }
 #dice { flex: none; width: 60px; height: 60px; display: grid; place-items: center; cursor: pointer;
   color: #c9ffb0; background: rgba(255,255,255,.04); border: 1px solid rgba(201,255,176,.35); border-radius: 16px;
-  transition: transform .2s, background .2s; }
-#dice:hover:not(:disabled) { background: rgba(201,255,176,.12); transform: rotate(12deg); }
-#dice:disabled { opacity: .5; cursor: wait; animation: roll 1s linear infinite; }
+  transition: background .2s; }
+#dice svg { transition: transform .2s; }
+#dice:hover:not(:disabled) { background: rgba(201,255,176,.12); }
+#dice:hover:not(:disabled) svg { transform: rotate(12deg); }
+#dice:disabled { opacity: .5; cursor: wait; }
+#dice:disabled svg { animation: roll 1s linear infinite; }
 #dice:focus-visible, #back:focus-visible, #skip:focus-visible, .tool:focus-visible, select:focus-visible { outline: 2px solid #c9ffb0; outline-offset: 2px; }
 @keyframes roll { to { transform: rotate(360deg); } }
 
@@ -28,9 +31,17 @@ body.hide-ui #ui, body.hide-ui .tool:not(#toggleUi) { opacity: 0; pointer-events
   text-shadow: 0 0 12px rgba(160,255,140,.45); overflow-wrap: anywhere; }
 #sub { margin-top: 4px; color: rgba(255,255,255,.55); font-size: 12px; }
 
-#filters { display: flex; gap: 12px; }
+#filters { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+#checks { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+#selects { display: flex; flex-wrap: nowrap; gap: 10px; }
+.chk { display: flex; align-items: center; gap: 6px; padding: 6px 10px; color: #fff; font: 600 12px system-ui, sans-serif;
+  background: rgba(16,18,40,.92); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; cursor: pointer; user-select: none; }
+.chk input { width: 14px; height: 14px; margin: 0; accent-color: #c9ffb0; cursor: pointer; }
+.chk:has(input:disabled) { opacity: .5; cursor: default; }
+.chk input:disabled { cursor: default; }
+.chk:has(input:focus-visible) { outline: 2px solid #c9ffb0; outline-offset: 2px; }
 [hidden] { display: none !important; }
-select { max-width: 260px; }
+select { max-width: 230px; text-overflow: ellipsis; }
 select:disabled { opacity: .5; cursor: default; }
 select { padding: 14px 16px; color: #fff; font: 600 14px system-ui, sans-serif; cursor: pointer;
   background: rgba(16,18,40,.92); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; }
@@ -43,6 +54,8 @@ select { padding: 14px 16px; color: #fff; font: 600 14px system-ui, sans-serif; 
 @media (max-width: 720px) {
   #ui { flex-direction: column-reverse; align-items: stretch; left: 12px; right: 12px; bottom: 24px; }
   #panel { flex-basis: auto; }
-  #filters select { flex: 1; }
+  #filters { align-items: stretch; }
+  #checks { justify-content: flex-start; }
+  #selects select { flex: 1; min-width: 0; }
 }
-@media (prefers-reduced-motion: reduce) { #dice:disabled { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #dice:disabled svg { animation: none; } }

@@ -80,9 +80,16 @@ function setText(text, sub = "") {
 
 // ---- Логика: 0 Земля -> 1 страна -> 2 регион -> 3 город -> 0
 let level = 0, busy = false, country, region;
-// Режим страны (файлы в modes/): выбранный в списке режим или null для «Страны ООН»
+// Режим страны (файлы mode-*.js): выбранный в списке режим или null для «Страны ООН»
 const MODE = () => MODES[$("fUn").value] || null;
 const inMode = () => !!MODE();
+// Города-государства (исключаются в режиме «Страны ООН» по чекбоксу)
+const CITY_STATES = new Set(["SG", "MC", "VA"]);   // Сингапур, Монако, Ватикан
+// Микрогосударства: площадь меньше этого порога (км²) — Ватикан, Монако, Науру, Тувалу, Сан-Марино, Мальта, Мальдивы и др.
+const MICRO_MAX_AREA = 1000;
+const isMicro = c => CITY_STATES.has(c.cca2) || (c.area > 0 && c.area < MICRO_MAX_AREA);
+if (!Object.keys(MODES).length)
+  console.warn("Не найдены файлы режимов стран — проверьте, что папка modes (russia.js, belarus.js) лежит рядом с index.html");
 for (const [key, m] of Object.entries(MODES)) {      // пункты списка создаются из зарегистрированных режимов
   const o = document.createElement("option");
   o.value = key; o.textContent = m.label; $("fUn").appendChild(o);
@@ -109,13 +116,32 @@ function styleCountry() {
   map.setPaintProperty("country-line", "line-color", inMode() ? "#ffffff" : COLORS.country);
 }
 
-// История выбора: сколько последних значений не повторяется (регионы — 15, города — 5)
-const HIST_LIMIT = { reg: 15, city: 5 };
-const hist = { reg: [], city: [] };
-function pickFresh(list, kind, key) {
-  const h = hist[kind], fresh = list.filter(x => !h.includes(key(x)));
-  const x = pick(fresh.length ? fresh : list);
-  h.push(key(x)); if (h.length > HIST_LIMIT[kind]) h.shift();
+// История выбора: у каждого списка своя память (по имени) — страны, регионы каждой страны, города каждого региона.
+//  - Длинный список (больше `limit`): помним последние `limit` значений, они не выпадают снова.
+//  - Короткий список (не больше `limit`): помним все. Лимит подстраивается под размер списка — в регионе
+//    10 городов, значит запоминаются 10: каждый город выпадает один раз за круг, и только потом круг
+//    начинается заново. Чтобы на стыке кругов не было быстрых повторов, три последних города
+//    в начале нового круга не выпадают.
+const hist = {};
+const tail = (a, k) => k > 0 ? a.slice(-k) : [];
+function pickFresh(list, name, key, limit) {
+  const s = hist[name] || (hist[name] = { done: [], recent: [] });
+  const n = list.length;
+  let pool;
+  if (n > limit) {
+    pool = list.filter(x => !s.recent.includes(key(x)));
+  } else {
+    let fresh = list.filter(x => !s.done.includes(key(x)));
+    if (!fresh.length) { s.done = []; fresh = list; }            // круг пройден — начинаем новый
+    const gap = tail(s.recent, Math.min(3, n - 1));
+    pool = fresh.filter(x => !gap.includes(key(x)));
+    if (!pool.length) pool = fresh;
+  }
+  if (!pool.length) pool = list;
+  const x = pick(pool), k = key(x);
+  s.done.push(k); s.recent.push(k);
+  s.recent = tail(s.recent, n > limit ? limit : 3);
+  if (n > limit) s.done = [];
   return x;
 }
 
@@ -124,6 +150,8 @@ function setBusy(v) {
   busy = v;
   $("dice").disabled = v;
   $("fUn").disabled = v;
+  $("noMicro").disabled = v;
+  $("noCityStates").disabled = v || $("noMicro").checked;   // микрогосударства включают города-государства
   $("fSubject").disabled = v;
   $("fRegion").disabled = v || inMode();
   $("back").disabled = v || level === 0;
@@ -142,9 +170,10 @@ $("dice").addEventListener("click", async () => {
       setText("ЗАГРУЗКА…");
       const all = await API.countries();
       const list = inMode() ? all.filter(c => c.cca2 === MODE().cca2)
-        : all.filter(c => c.un && (!$("fRegion").value || c.continent === $("fRegion").value));
+        : all.filter(c => c.un && (!$("fRegion").value || c.continent === $("fRegion").value) &&
+            !($("noMicro").checked && isMicro(c)) && !($("noCityStates").checked && CITY_STATES.has(c.cca2)));
       if (!list.length) throw new Error("empty");
-      country = pick(list);
+      country = pickFresh(list, "country", c => c.cca2, 15);
       styleCountry();
       setText(country.name, "Страна");
       const [, geo] = await Promise.all([fly(country.center, country.zoom), API.countryBorder(country)]);
@@ -153,7 +182,7 @@ $("dice").addEventListener("click", async () => {
       clearBorders("region", "city");
       setText("ПОИСК РЕГИОНА…", country.name);
       const res = inMode() ? await API.regionsMode(MODE()) : await API.regions(country);
-      region = res.list.length ? (fixedRegion() || (inMode() ? pickFresh(res.list, "reg", r => r.name) : pick(res.list))) : { name: country.name, center: country.center };
+      region = res.list.length ? (fixedRegion() || (inMode() ? pickFresh(res.list, "reg:" + country.cca2, r => r.name, 15) : pick(res.list))) : { name: country.name, center: country.center };
       const note = res.failed ? "Сервер регионов не ответил — показан центр страны"
         : res.list.length ? `${country.name} - ${region.name}` : "У страны нет данных о регионах";
       region.sub = note;
@@ -166,7 +195,7 @@ $("dice").addEventListener("click", async () => {
       setText("ПОИСК ГОРОДА…", region.name);
       const res = inMode() ? await API.citiesMode(region, MODE())
         : (region.geometry || region.qid || region.osm) ? await API.cities(region) : { list: [], failed: false };
-      const city = res.list.length ? (inMode() ? pickFresh(res.list, "city", c => c.name + c.center) : pickMiddle(res.list)) : { name: region.name, center: region.center };
+      const city = res.list.length ? (inMode() ? pickFresh(res.list, "city:" + country.cca2 + ":" + region.name, c => c.name + c.center, res.list.length) : pickMiddle(res.list)) : { name: region.name, center: region.center };
       setText(city.name, res.list.length ? `${country.name} - ${region.name} - ${city.name}` : "Город не найден — показан центр региона");
       const [, geo] = await Promise.all([fly(city.center, ZOOM_CITY),
         res.list.length ? API.cityBorder(city, region.name) : null]);
@@ -187,10 +216,11 @@ $("dice").addEventListener("click", async () => {
 $("fUn").addEventListener("change", async () => {
   if (busy) return;
   setBusy(true);
-  hist.reg = []; hist.city = [];
   clearBorders("country", "region", "city");
   $("fSubject").hidden = !inMode();
   $("fRegion").hidden = inMode();
+  $("fCity").hidden = inMode();      // чекбоксы относятся только к режиму «Страны ООН»
+  $("fMicro").hidden = inMode();
   try {
     styleCountry();
     if (inMode()) {                       // сразу приближаемся к стране
@@ -238,6 +268,9 @@ $("fSubject").addEventListener("change", async () => {
     setText("ОШИБКА", "Не удалось загрузить данные.");
   } finally { setBusy(false); }
 });
+
+// Чекбокс «микрогосударства» делает неактивным чекбокс «города-государства»
+$("noMicro").addEventListener("change", () => { $("noCityStates").disabled = $("noMicro").checked; });
 
 // ---- Кнопка «Назад»: на уровень выше
 $("back").addEventListener("click", async () => {
